@@ -56,9 +56,17 @@ check_stow_version() {
     fi
     
     local stow_version
+    # stow_version=$(stow --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' || echo "0")
+    # 查看stow版本，并将标准错误输出到黑洞，然后将结果用head取出第一行，再用grep匹配版本号x.x.x或者x.x形式，如果左边命令失败则为0
     stow_version=$(stow --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' || echo "0")
-    
-    if [ "$(printf '%s\n' "$STOW_MIN_VERSION" "$stow_version" | sort -V | head -n1)" != "$STOW_MIN_VERSION" ]; then
+
+    # if [ "$(printf '%s\n' "$STOW_MIN_VERSION" "$stow_version" | sort -V | head -n1)" != "$STOW_MIN_VERSION" ]; then
+
+    # 各自输出最低版本号和实际版本号到一行，使用sort按顺序排序版本号，head取出第一行也就是两个版本号中最小的。
+    # 将最低版本号和处理后的版本号比较，如果最小版本号等于最低版本号，那就没问题，不处理错误
+    # 假设最低2.4.0 实际2.3.0，排序结果为2.3.0，2.3.0不等于2.4.0，错误处理
+    # 假设最低2.4.0 实际2.5.0，排序结果为2.4.0，2.4.0等于2.4.0，无错误
+    if [ "$(printf '%s\n' "$STOW_MIN_VERSION" "$stow_version" | sort -v | head -n1)" != "$STOW_MIN_VERSION" ]; then
         red "错误：GNU Stow 版本过低 ($stow_version < $STOW_MIN_VERSION)"
         blue "请升级 GNU Stow 到 $STOW_MIN_VERSION 或更高版本"
         return 1
@@ -197,6 +205,7 @@ generate_target_rel_path() {
         rel_path="${abs_path#$HOME/}"
     else
         # 如果不在 $HOME 下，直接返回原路径（但调用者应保证在 $HOME 下）
+        red "错误：源文件不在用户目录下，会导致链接出错"
         rel_path="${abs_path#/}"
     fi
 
@@ -448,11 +457,14 @@ add_dfm() {
     blue "现在可以使用 'dfm link $module_name' 创建符号链接"
 }
 
-# 链接配置文件
-link_dfm() {
-    local module="${1:-}"
+# ===========================================
+# 通用 Stow 操作（封装链接或取消链接）
+# ===========================================
+stow_operation() {
+    local action="$1"      # "link" 或 "unlink"
+    local module="${2:-}"
 
-    # 检查 stow
+    # 检查 stow 版本
     if ! check_stow_version; then
         return 1
     fi
@@ -464,44 +476,57 @@ link_dfm() {
         return 1
     fi
 
-    yellow "\n====== DFM 链接配置 ======"
+    # 根据动作设置提示信息和 Stow 命令选项
+    local action_verb
+    local stow_opts=""
+    if [ "$action" = "link" ]; then
+        action_verb="链接"
+        stow_opts=""  # link 不需要额外选项
+    elif [ "$action" = "unlink" ]; then
+        action_verb="取消链接"
+        stow_opts="-D"
+    else
+        red "内部错误：未知动作 '$action'"
+        return 1
+    fi
+
+    yellow "\n====== DFM ${action_verb}配置 ======"
     blue "仓库目录: $DOTFILES_DIR"
     blue "目标目录: $HOME"
     blue "Stow 模式: --dotfiles (自动将 dot- 前缀映射为 .)"
 
     if [ -n "$module" ]; then
-        # 链接单个模块
+        # 操作单个模块
         if [ ! -d "$DOTFILES_DIR/$module" ]; then
             red "错误：模块 '$module' 不存在于仓库中"
             return 1
         fi
-        yellow "\n链接模块: $module"
+        yellow "\n${action_verb}模块: $module"
         set -x
-        stow -d "$DOTFILES_DIR" -t "$HOME" --dotfiles "$module"
+        stow $stow_opts -d "$DOTFILES_DIR" -t "$HOME" --dotfiles "$module"
         set +x
-        green "✓ 模块 '$module' 链接成功"
+        green "✓ 模块 '$module' ${action_verb}成功"
     else
-        # 链接所有模块（遍历仓库下的每个子目录）
-        local linked=0
+        # 操作所有模块
+        local count=0
         for pkg in "$DOTFILES_DIR"/*/; do
             if [ -d "$pkg" ]; then
                 module_name=$(basename "$pkg")
-                yellow "\n链接模块: $module_name"
+                yellow "\n${action_verb}模块: $module_name"
                 set -x
-                stow -d "$DOTFILES_DIR" -t "$HOME" --dotfiles "$module_name"
+                stow $stow_opts -d "$DOTFILES_DIR" -t "$HOME" --dotfiles "$module_name"
                 set +x
-                green "✓ 模块 '$module_name' 链接成功"
-                linked=$((linked + 1))
+                green "✓ 模块 '$module_name' ${action_verb}成功"
+                count=$((count + 1))
             fi
         done
-        if [ $linked -eq 0 ]; then
+        if [ $count -eq 0 ]; then
             yellow "仓库中没有找到任何模块"
         else
-            green "\n✓ 共链接 $linked 个模块"
+            green "\n✓ 共${action_verb} $count 个模块"
         fi
     fi
 }
-
 # 仅添加别名
 alias_dfm() {
     local alias_name="${1:-$DEFAULT_ALIAS_NAME}"
@@ -514,6 +539,8 @@ show_help() {
 DFM - Dotfiles Manager (基于 GNU Stow)
 
 用法: $SCRIPT_NAME <命令> [参数]
+
+注意: DFM只能管理用户家目录下的配置文件，如果添加非家目录的配置文件会退出脚本
 
 命令:
   init [别名]           初始化 DFM 配置目录（可指定别名，默认 dfm）
@@ -568,7 +595,11 @@ main() {
             ;;
         "link")
             shift
-            link_dfm "$@"
+            stow_operation "link" "$@"
+            ;;
+        "unlink")
+            shift
+            stow_operation "unlink" "$@"
             ;;
         "alias")
             shift
