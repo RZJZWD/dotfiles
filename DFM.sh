@@ -533,6 +533,35 @@ alias_dfm() {
     add_aliases "$alias_name"
 }
 
+# 列出添加的配置文件
+list_dfm(){
+    # 检查仓库是否存在
+    if [ ! -d "$DOTFILES_DIR" ];then
+        red "错误：配置仓库不存在 - $DOTFILES_DIR"
+        blue "请先运行 'dfm init' 初始化"
+    fi
+
+    yellow "\n====== DFM 仓库内容 ======"
+    blue "仓库目录: $DOTFILES_DIR"
+    echo ""
+
+    if command -v tree &>/dev/null; then
+        # 使用 tree 显示目录树（更美观）
+        tree -C --noreport "$DOTFILES_DIR"
+    else
+        blue "提示: 安装 'tree' 可获得更详细的树形结构"
+        echo ""
+        # 检查仓库是否为空
+        if [ -z "$(ls -A "$DOTFILES_DIR" 2>dev/null)" ];then
+            yellow "仓库为空，还没有添加任何配置文件"
+        else
+            # 使用 ls 列出根目录内容（即各个模块）
+            ls -l --color=auto "$DOTFILES_DIR"
+        fi
+
+    fi
+}
+
 # 显示帮助信息
 show_help() {
     cat << EOF
@@ -604,6 +633,9 @@ main() {
         "alias")
             shift
             alias_dfm "$@"
+            ;;
+        "list"|"ls"|"tree")
+            list_dfm
             ;;
         "help"|"--help"|"-h")
             show_help
