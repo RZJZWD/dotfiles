@@ -1,0 +1,39 @@
+# Created by newuser for 5.8
+
+### Added by Zinit's installer
+if [[ ! -f $HOME/.local/share/zinit/zinit.git/zinit.zsh ]]; then
+    print -P "%F{33} %F{220}Installing %F{33}ZDHARMA-CONTINUUM%F{220} Initiative Plugin Manager (%F{33}zdharma-continuum/zinit%F{220})…%f"
+    command mkdir -p "$HOME/.local/share/zinit" && command chmod g-rwX "$HOME/.local/share/zinit"
+    command git clone https://github.com/zdharma-continuum/zinit "$HOME/.local/share/zinit/zinit.git" && \
+        print -P "%F{33} %F{34}Installation successful.%f%b" || \
+        print -P "%F{160} The clone has failed.%f%b"
+fi
+
+source "$HOME/.local/share/zinit/zinit.git/zinit.zsh"
+autoload -Uz _zinit
+(( ${+_comps} )) && _comps[zinit]=_zinit
+
+# ---------- 插件加载区 ----------
+# 加载 oh-my-zsh 官方插件（通过 snippet）
+zinit snippet OMZ::plugins/git/git.plugin.zsh
+zinit snippet OMZ::plugins/sudo/sudo.plugin.zsh
+zinit snippet OMZ::plugins/z/z.plugin.zsh
+zinit snippet OMZ::plugins/copyfile/copyfile.plugin.zsh
+zinit snippet OMZ::plugins/extract/extract.plugin.zsh
+
+# 加载第三方插件
+zinit light zsh-users/zsh-autosuggestions
+# 语法高亮插件务必放在最后
+zinit light zsh-users/zsh-syntax-highlighting
+
+# 加载 powerlevel10k 主题（使用浅克隆）
+zinit ice depth=1
+zinit light romkatv/powerlevel10k
+
+# 加载 p10k 配置文件（如果存在）
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+# ===== DFM Dotfiles Manager - Start ===== #
+alias dfm='/home/djs/dotfiles/DFM.sh'
+# ===== DFM Dotfiles Manager - End ===== #
+
