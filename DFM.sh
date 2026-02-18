@@ -556,7 +556,7 @@ list_dfm(){
             yellow "仓库为空，还没有添加任何配置文件"
         else
             # 使用 ls 列出根目录内容（即各个模块）
-            ls -l --color=auto "$DOTFILES_DIR"
+            ls "$DOTFILES_DIR"
         fi
 
     fi
