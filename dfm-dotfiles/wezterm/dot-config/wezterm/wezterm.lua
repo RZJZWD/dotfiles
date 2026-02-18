@@ -82,15 +82,15 @@ if wezterm.target_triple:find("windows") ~= nil then
         config.default_prog = {'cmd.exe'}
     end
 else
-    -- Unix 系统：nu → bash → sh
+    -- Unix 系统：zsh → bash → sh
     local function command_exists(cmd)
         local success, stdout, stderr = wezterm.run_child_process({
             "sh", "-c", "command -v " .. cmd
         })
         return success and stdout and stdout ~= ""
     end
-    if command_exists("nu") then
-        config.default_prog = {'nu', '-i'}
+    if command_exists("zsh") then
+        config.default_prog = {'zsh', '-i'}
     elseif command_exists("bash") then
         config.default_prog = {'bash', '-i'}
     else
