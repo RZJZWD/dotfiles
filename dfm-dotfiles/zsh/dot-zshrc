@@ -1,5 +1,19 @@
 # Created by newuser for 5.8
 
+# ======================================
+# ⚙️ Oh My Zsh 兼容性变量（定义你的习惯）
+# ======================================
+CASE_SENSITIVE="false"          # 默认：不区分大小写
+HYPHEN_INSENSITIVE="true"       # 连字符和下划线互换（方便补全）
+COMPLETION_WAITING_DOTS="true"  # 显示等待补全的红点
+HIST_STAMPS="yyyy-mm-dd"        # 历史记录时间格式
+# ENABLE_CORRECTION="true"      # 启用命令自动更正（按需）
+# DISABLE_MAGIC_FUNCTIONS="true" # 禁用魔法函数（按需）
+# DISABLE_LS_COLORS="true"       # 完全禁用 ls 颜色（不推荐）
+
+# ======================================
+# 🔌 Zinit 插件管理器安装与加载
+# ======================================
 ### Added by Zinit's installer
 if [[ ! -f $HOME/.local/share/zinit/zinit.git/zinit.zsh ]]; then
     print -P "%F{33} %F{220}Installing %F{33}ZDHARMA-CONTINUUM%F{220} Initiative Plugin Manager (%F{33}zdharma-continuum/zinit%F{220})…%f"
@@ -13,7 +27,26 @@ source "$HOME/.local/share/zinit/zinit.git/zinit.zsh"
 autoload -Uz _zinit
 (( ${+_comps} )) && _comps[zinit]=_zinit
 
-# ---------- 插件加载区 ----------
+# ======================================
+# 📚 加载 Oh My Zsh 核心库（完整模拟默认行为）
+# ======================================
+zinit wait"1" lucid for \
+    OMZL::clipboard.zsh \
+    OMZL::completion.zsh \
+    OMZL::directories.zsh \
+    OMZL::functions.zsh \
+    OMZL::git.zsh \
+    OMZL::grep.zsh \
+    OMZL::history.zsh \
+    OMZL::key-bindings.zsh \
+    OMZL::misc.zsh \
+    OMZL::spectrum.zsh \
+    OMZL::termsupport.zsh \
+    OMZL::theme-and-appearance.zsh
+
+# ======================================
+# 🧩 插件加载区（官方插件与第三方插件）
+# ======================================
 # 加载 oh-my-zsh 官方插件（通过 snippet）
 zinit snippet OMZ::plugins/git/git.plugin.zsh
 zinit snippet OMZ::plugins/sudo/sudo.plugin.zsh
@@ -26,6 +59,9 @@ zinit light zsh-users/zsh-autosuggestions
 # 语法高亮插件务必放在最后
 zinit light zsh-users/zsh-syntax-highlighting
 
+# ======================================
+# 🎨 主题加载（Powerlevel10k）
+# ======================================
 # 加载 powerlevel10k 主题（使用浅克隆）
 zinit ice depth=1
 zinit light romkatv/powerlevel10k
@@ -33,7 +69,11 @@ zinit light romkatv/powerlevel10k
 # 加载 p10k 配置文件（如果存在）
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
+# ======================================
+# ⚙️ 杂项配置
+# ======================================
+export PATH="$HOME/.local/bin:$PATH"
+
 # ===== DFM Dotfiles Manager - Start ===== #
 alias dfm='/home/djs/dotfiles/DFM.sh'
 # ===== DFM Dotfiles Manager - End ===== #
-
