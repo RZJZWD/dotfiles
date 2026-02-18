@@ -66,7 +66,7 @@ check_stow_version() {
     # 将最低版本号和处理后的版本号比较，如果最小版本号等于最低版本号，那就没问题，不处理错误
     # 假设最低2.4.0 实际2.3.0，排序结果为2.3.0，2.3.0不等于2.4.0，错误处理
     # 假设最低2.4.0 实际2.5.0，排序结果为2.4.0，2.4.0等于2.4.0，无错误
-    if [ "$(printf '%s\n' "$STOW_MIN_VERSION" "$stow_version" | sort -v | head -n1)" != "$STOW_MIN_VERSION" ]; then
+    if [ "$(printf '%s\n' "$STOW_MIN_VERSION" "$stow_version" | sort -V | head -n1)" != "$STOW_MIN_VERSION" ]; then
         red "错误：GNU Stow 版本过低 ($stow_version < $STOW_MIN_VERSION)"
         blue "请升级 GNU Stow 到 $STOW_MIN_VERSION 或更高版本"
         return 1
@@ -260,10 +260,10 @@ init_dfm() {
     
     green "\n方案2 - 整理到用户目录（推荐）:"
     green "  • 创建专用目录（可选）:"
-    green "    如：mkdir -p ~/dotfiles-manager"
+    green "    如：mkdir -p ~/.dotfiles"
     green "  • 将脚本移动到该目录（可选）:"
-    green "    mv \"$SCRIPT_PATH\" ~/dotfiles-manager/"
-    green "  • 配置目录会自动创建在 ~/dotfiles-manager/dfm-dotfiles"
+    green "    mv \"$SCRIPT_PATH\" ~/.dotfiles/"
+    green "  • 配置目录会自动创建在 ~/.dotfiles/dfm-dotfiles"
 
     # 检查 GNU Stow
     if ! check_stow_version; then
