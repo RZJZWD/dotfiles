@@ -547,7 +547,7 @@ list_dfm(){
 
     if command -v tree &>/dev/null; then
         # 使用 tree 显示目录树（更美观）
-        tree -C --noreport "$DOTFILES_DIR"
+        tree -C --noreport -L 2 "$DOTFILES_DIR"
     else
         blue "提示: 安装 'tree' 可获得更详细的树形结构"
         echo ""
@@ -576,7 +576,8 @@ DFM - Dotfiles Manager (基于 GNU Stow)
   add <源文件路径> [模块名]  添加配置文件到指定模块（模块名可选，自动推断）
   link [模块名]         使用 stow 链接配置文件（不指定模块则链接所有）
   alias [别名]          仅为脚本添加别名（不初始化仓库）
-  help                  显示此帮助信息
+  list|ls|              列出已添加的配置文件
+  help|--help|-h        显示此帮助信息
 
 示例:
   $SCRIPT_NAME init                     初始化，使用默认别名 dfm
@@ -584,10 +585,11 @@ DFM - Dotfiles Manager (基于 GNU Stow)
   $SCRIPT_NAME add ~/.bashrc bash       添加 .bashrc 到 bash 模块
   $SCRIPT_NAME add ~/.config/nvim nvim  添加 nvim 配置到 nvim 模块
   $SCRIPT_NAME add ~/.oh-my-zsh zsh     添加 oh-my-zsh 插件到 zsh 模块
-  $SCRIPT_NAME link nvim                 仅链接 nvim 模块
-  $SCRIPT_NAME link                       链接所有模块
-  $SCRIPT_NAME alias                       添加默认别名 dfm
-  $SCRIPT_NAME alias dot                   添加别名 dot
+  $SCRIPT_NAME link nvim                仅链接 nvim 模块
+  $SCRIPT_NAME link                     链接所有模块
+  $SCRIPT_NAME alias                    添加默认别名 dfm
+  $SCRIPT_NAME alias dot                添加别名 dot
+  $SCRIPT_NAME list                     列出已添加的配置文件
 
 目录结构说明:
   dfm-dotfiles/         配置根目录
