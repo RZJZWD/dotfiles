@@ -58,19 +58,19 @@ local function symbol_info(bufnr, client)
   end, bufnr)
 end
 
--- -- 根据不同系统设置不同的query-driver路径
--- local is_win = vim.fn.has('win32') == 1
--- local query_driver_arg
+-- 根据不同系统设置不同的query-driver路径
+local is_win = vim.fn.has('win32') == 1
+local query_driver_arg
 
--- if is_win then
---     -- 假设 mingw64 安装在默认的 MSYS2 路径
---     -- query_driver_arg = "C:\\msys64\\mingw64\\bin\\*.exe"
---     -- 如果你不确定路径，或者有多个mingw，可以设为更通用的模式，让它自动发现
---     query_driver_arg = "D:/environment/winlibs-x86_64/mingw64/bin/*.exe"
--- else
---     -- Linux/macOS 下的路径，例如：
---     -- query_driver_arg = "/usr/bin/**"
--- end
+if is_win then
+    -- 假设 mingw64 安装在默认的 MSYS2 路径
+    -- query_driver_arg = "C:\\msys64\\mingw64\\bin\\*.exe"
+    -- 如果你不确定路径，或者有多个mingw，可以设为更通用的模式，让它自动发现
+    query_driver_arg = "D:/environment/winlibs-x86_64/mingw64/bin/*.exe"
+else
+    -- Linux/macOS 下的路径，例如：
+    query_driver_arg = "/usr/bin/**"
+end
 
 ---@class ClangdInitializeResult: lsp.InitializeResult
 ---@field offsetEncoding? string
@@ -78,7 +78,7 @@ end
 ---@type vim.lsp.Config
 return {
     cmd = { 'clangd',
-        -- '--query-driver=' .. query_driver_arg,
+        '--query-driver=' .. query_driver_arg,
     },
   filetypes = { 'c', 'cpp', 'objc', 'objcpp', 'cuda' },
   root_markers = {
