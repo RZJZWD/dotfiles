@@ -535,10 +535,19 @@ alias_dfm() {
 
 # 列出添加的配置文件
 list_dfm(){
+    # 新增：接受最大深度参数，默认 2
+    local max_depth="${1:-2}"
+    # 如果传入的参数不是正整数，则重置为 2
+    if ! echo "$max_depth" | grep -qE '^[0-9]+$'; then
+        yellow "警告：深度必须为数字，已恢复默认值 2"
+        max_depth=2
+    fi
+
     # 检查仓库是否存在
     if [ ! -d "$DOTFILES_DIR" ];then
         red "错误：配置仓库不存在 - $DOTFILES_DIR"
         blue "请先运行 'dfm init' 初始化"
+        return 1    # 缺少 return，会导致继续执行，建议加上
     fi
 
     yellow "\n====== DFM 仓库内容 ======"
@@ -547,7 +556,7 @@ list_dfm(){
 
     if command -v tree &>/dev/null; then
         # 使用 tree 显示目录树（更美观）
-        tree -C --noreport -L 2 "$DOTFILES_DIR"
+        tree -C --noreport -L "$max_depth" "$DOTFILES_DIR"
     else
         blue "提示: 安装 'tree' 可获得更详细的树形结构"
         echo ""
@@ -576,7 +585,7 @@ DFM - Dotfiles Manager (基于 GNU Stow)
   add <源文件路径> [模块名]  添加配置文件到指定模块（模块名可选，自动推断）
   link [模块名]         使用 stow 链接配置文件（不指定模块则链接所有）
   alias [别名]          仅为脚本添加别名（不初始化仓库）
-  list|ls|              列出已添加的配置文件
+  list|ls|tree          列出已添加的配置文件（可选指定显示深度，默认 2）
   help|--help|-h        显示此帮助信息
 
 示例:
@@ -637,7 +646,8 @@ main() {
             alias_dfm "$@"
             ;;
         "list"|"ls"|"tree")
-            list_dfm
+            shift
+            list_dfm "$@"
             ;;
         "help"|"--help"|"-h")
             show_help
