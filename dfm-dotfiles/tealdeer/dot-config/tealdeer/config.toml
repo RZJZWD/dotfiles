@@ -1,0 +1,3 @@
+cache_dir = "/home/djs/.tldr"
+[updates]
+auto_update = false
