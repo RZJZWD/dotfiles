@@ -38,36 +38,64 @@ autoload -Uz _zinit
 source ~/.zsh/completions/register.zsh
 
 # ======================================
-# 📚 加载 Oh My Zsh 核心库（完整模拟默认行为）
+# 📚 加载 Oh My Zsh 核心库
 # ======================================
+# --- 必须同步加载：补全系统、按键绑定、剪贴板、历史共享 ---
+zinit snippet OMZL::completion.zsh
+zinit snippet OMZL::clipboard.zsh
+zinit snippet OMZL::key-bindings.zsh
+zinit snippet OMZL::history.zsh
+
+# --- 延迟加载：不影响按键与补全初始化 ---
 zinit wait"1" lucid for \
-    OMZL::clipboard.zsh \
-    OMZL::completion.zsh \
     OMZL::directories.zsh \
     OMZL::functions.zsh \
     OMZL::git.zsh \
     OMZL::grep.zsh \
-    OMZL::history.zsh \
-    OMZL::key-bindings.zsh \
     OMZL::misc.zsh \
     OMZL::spectrum.zsh \
     OMZL::termsupport.zsh \
     OMZL::theme-and-appearance.zsh
 
 # ======================================
-# 🧩 插件加载区（官方插件与第三方插件）
+# 🧩 官方插件（Oh My Zsh plugins）
 # ======================================
-# 加载 oh-my-zsh 官方插件（通过 snippet）
-zinit snippet OMZ::plugins/git/git.plugin.zsh
+# --- 必须同步加载：sudo 插件绑定 Esc-Esc 快捷键 ---
 zinit snippet OMZ::plugins/sudo/sudo.plugin.zsh
-zinit snippet OMZ::plugins/z/z.plugin.zsh
-zinit snippet OMZ::plugins/copyfile/copyfile.plugin.zsh
-zinit snippet OMZ::plugins/extract/extract.plugin.zsh
 
-# 加载第三方插件
+# --- 延迟加载：不影响启动交互 ---
+zinit wait"1" lucid for \
+    OMZ::plugins/git/git.plugin.zsh \
+    OMZ::plugins/copyfile/copyfile.plugin.zsh \
+    OMZ::plugins/extract/extract.plugin.zsh \
+    OMZP::colored-man-pages \
+    OMZP::command-not-found \
+    OMZP::gitignore
+
+# ======================================
+# 🧩 第三方插件（Third-party plugins）
+# ======================================
+# --- 必须同步加载：fzf（必须在 key-bindings 之后绑定按键）---
+zinit ice from"gh-r" as"command" id-as"junegunn/fzf" \
+    atload'eval "$(fzf --zsh)"'
+zinit light junegunn/fzf
+
+# --- 延迟加载：不影响启动交互 ---
+# 快速目录跳转（替代 OMZ 的 z）
+zinit ice lucid wait"1"
+zinit light skywind3000/z.lua
+
+# 补全定义库（在 compinit 之后）
+zinit ice wait lucid
+zinit light zsh-users/zsh-completions
+
+# 自动建议
+zinit ice wait lucid
 zinit light zsh-users/zsh-autosuggestions
-# 语法高亮插件务必放在最后
-zinit light zsh-users/zsh-syntax-highlighting
+
+# 语法高亮务必最后
+zinit ice wait lucid
+zinit light zdharma-continuum/fast-syntax-highlighting
 
 # ======================================
 # 🎨 主题加载（Powerlevel10k）
