@@ -4,7 +4,7 @@
 
 一句话原则：**基座管通用，覆盖层管环境；配置管配置，应用管应用。**
 
-> 本文描述的是目标设计。`shell.d`、多根 stow、`dfm update/push/status` 目前尚未实现（见 §9 迁移清单）。
+> 设计已基本落地：`shell.d`、多根、`dfm repo/update/push/status` 均已实现。剩余项见 §9。
 
 ---
 
@@ -59,18 +59,19 @@
               │ 通用默认值 + 扩展点             │
               └───────────┬───────────────────┘
                           │ fetch / push
-        ┌─────────────────┴─────────────────┐
-        ▼                                   ▼
-┌────────────────────┐          ┌────────────────────┐
-│ overlay A          │          │ overlay B          │
-│ 私有 Git            │          │ 私有 Git            │
-│ 环境事实 / 私人工具  │          │ 另一套环境事实      │
-└────────────────────┘          └────────────────────┘
+                          ▼
+              ┌───────────────────────────────┐
+              │ overlay（本机唯一，私有 Git）    │
+              │ 环境事实 / 私人工具             │
+              └───────────────────────────────┘
 ```
 
-同一台机器上 **base + N 个 overlay** 同时生效，都经 DFM 链接进 `$HOME`。
+每台机器**恰好两个根**：`base` 与 `overlay`，都经 DFM 链接进 `$HOME`。
 
-关键：哪些根存在、每个根能不能推送，都是**本机配置的事实**，不是环境身份。DFM 不区分“家里”“公司”，唯一的能力差异是“这个根在这台机器上有没有推送权”。所以各根独立演进，不需要分支、不需要 rebase——所谓 home / company 只是 `$HOME` 下放了哪几份 clone。
+- `overlay` 一机一个，出现第二个是**配置错误**，DFM 直接报错
+- 目录名（`dotfiles-home` / `dotfiles-work`）只是这台机器的标识，角色固定是 `overlay`
+- 根集合不再自由枚举：DFM 不区分“家里”“公司”，差异只有 overlay 的目录名和 base 的推送权
+- 两个根各自独立演进，不需要分支、不需要 rebase
 
 ---
 
@@ -102,17 +103,17 @@ base 的验收标准：
 
 DFM 不维护任何配置文件。两件事都从已有事实里读：
 
-**根（root）**：固定命名约定 —— base 是 DFM 脚本所在目录（约定为 `~/dotfiles`），overlay 是 `~/dotfiles-<名字>`。
+**根（root）**：设计上只有两个角色，名字固定：
 
 ```
-~/dotfiles          base
-~/dotfiles-home     overlay
-~/dotfiles-work     overlay
+base     = DFM 脚本所在目录（约定 ~/dotfiles）
+overlay  = 本机唯一一个 ~/dotfiles-<名字>
 ```
 
-- 加一个 overlay = `git clone <url> ~/dotfiles-<名字>`，没有第二步
-- 删一个 = 删目录
-- 发现规则就只有这两条 glob，不扫描 `$HOME` 里的其他目录
+- `overlay` 一机一个；发现第二个 `~/dotfiles-*` 直接报错，不提供“选一个”的选项
+- 目录名（`dotfiles-home` / `dotfiles-work`）只用于展示，角色仍是 `overlay`
+- `--root` 只接受 `base` / `overlay`（兼容 overlay 的目录名作为别名）
+- 加 overlay = `git clone <url> ~/dotfiles-<名字>`；本机已有 overlay 时 `dfm repo add` 会拒绝
 - 每个目录都是**独立 git 仓库**，各自管理自己的 remote、分支和历史，互相不感知
 - `~/dotfiles/.gitignore` 里把 `dotfiles-*/` 兜底忽略：同级目录本来就不在 base 的仓库里，这条只防有人把 overlay clone 进 base 工作树时污染 `git status`
 
@@ -127,14 +128,14 @@ git remote set-url --push origin DISABLED    # 只读
 - **overlay 永远可推**：它就是你在这台机器上维护的私有仓库，origin 自带推送地址，不需要开关
 - **base 的推送权是本机决策**：`dfm init` 时确定（`--push-base` / `--no-push-base`，默认询问且缺省不可推），之后随时用 `dfm repo readonly|writable base` 增删
 
-**换一台机器**，只是 `$HOME` 下放哪几份 clone、以及 base 推不推不同，没有任何声明文件要改。
+**换一台机器**，只是 overlay 的目录名、以及 base 推不推不同，没有任何声明文件要改。
 
 规则：
 
-- `dfm update`：每个根 `git pull --ff-only`，非 git 根跳过
-- `dfm push`：每个根尝试推送；pushurl 被禁用/为空时报告 `skipped (read-only)`，不算失败
-- 未发现额外根时就是单根行为，与现状兼容
-- 模块名跨根唯一，重名直接报错
+- `dfm update`：两个根各自 `git pull --ff-only`，非 git 根跳过
+- `dfm push`：两个根各自尝试推送；pushurl 被禁用/为空时报告 `skipped (read-only)`，不算失败
+- 没有 overlay 时只剩 base，命令照常（此时 `dfm add` 必须显式 `--root base`）
+- 模块名在 base / overlay 之间唯一，重名直接报错
 - 文件级冲突交给 stow 报错（护栏，不吞错）
 
 ### 4.2 扩展点：shell.d
@@ -177,6 +178,7 @@ overlay 往 `~/.config/shell.d/` 放文件即可，数字前缀决定加载顺�
 | `dfm link [模块]` | 遍历所有根，链接全部模块或指定模块 |
 | `dfm unlink [模块]` | 反向操作 |
 | `dfm list` | 按根分组列出模块 |
+| `dfm add [--root <根>] <源> [模块]` | 移入 overlay（默认）并立即链接；写 base 需 `--root base` |
 | `dfm repo list` | 列出发现的根、分支、remote、能否推送 |
 | `dfm repo add <url> [名字]` | clone 到 `~/dotfiles-<名字>`，随后 link（用于在新机器上恢复自己的 overlay） |
 | `dfm repo pushurl <根> <url>` | 给根追加 push URL（fetch 与 push 分离） |
@@ -218,25 +220,16 @@ dotfiles/
     └── tealdeer/dot-config/tealdeer/...
 ```
 
-overlay A（私有 Git）：
+overlay（本机唯一；目录名随机器不同，内容只放这台机器的事实）：
 
 ```
 dotfiles-home/
 └── dfm-dotfiles/
-    ├── home-interop/
-    │   ├── dot-config/shell.d/20-windows-interop.sh
+    ├── interop/
+    │   ├── dot-config/interop/{interop-path.sh,install-system.sh}
     │   └── dot-local/bin/git-credential-wsl-gcm
-    └── home-conda/
-        └── dot-config/shell.d/30-conda.sh
-```
-
-overlay B（私有 Git）：
-
-```
-dotfiles-work/
-└── dfm-dotfiles/
-    ├── work-shell/dot-config/shell.d/10-work.sh
-    └── work-tools/dot-local/bin/...
+    └── shell/
+        └── dot-config/shell.d/{20-windows-interop.sh,30-conda.sh}
 ```
 
 overlay 仓库**不包含 `DFM.sh`**，统一使用 base 里那一份；overlay 只有 `dfm-dotfiles/<模块>/`。
@@ -299,7 +292,7 @@ dfm push          # 只推可写的根；base 报 skipped
 - [x] base 的 rc 换成 `shell.d` 循环，删除 interop 的 source 行
 - [x] base 的私有内容移入 overlay 种子分支 `overlay-seed`；本机 overlay 仓库已建（`~/dotfiles-home`，暂无 remote）
 - [x] 系统侧 interop 内容未变，`/usr/local/sbin/wsl-interop-apply` 无需重跑
-- [ ] DFM 增加根发现、`repo` 子命令与 `update` / `push` / `status`
+- [x] DFM 增加根发现、`repo` 子命令与 `update` / `push` / `status`
 - [ ] 其它机器（如公司电脑）照 [migration.md](migration.md) 迁移，并建各自 overlay
 - [ ] 实现稳定后补写仓库 README（安装、用法、目录说明）
 

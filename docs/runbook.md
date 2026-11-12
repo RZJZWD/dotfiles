@@ -5,19 +5,15 @@
 
 ## 0. 当前实现状态
 
-- `DFM.sh` 仍是单根：`init / add / link / unlink / alias / list`
-- `dfm repo` / `update` / `push` / `status` 尚未实现
-- 因此 **overlay 目前用裸 stow 链接**：
-
-```sh
-stow -d ~/dotfiles-<名字>/dfm-dotfiles -t ~ --dotfiles <模块...>
-```
-
-等 DFM 多根落地后，统一改成 `dfm link`。
+- `DFM.sh` 只有两个根：base + 本机唯一的 overlay（`~/dotfiles-*`）
+- overlay 和 base 一样用 `dfm link` 链接；`dfm status` 看各根状态
+- 推送能力由各仓库的 `pushurl` 决定，`dfm push` 自动跳过只读根
 
 ---
 
-## 任务 A：给本机新增一个 overlay
+## 任务 A：给本机新增 overlay
+
+一台机器**只能有一个** overlay；已经有 `~/dotfiles-*` 时，`dfm repo add` 会拒绝，应直接在旧仓库里更新。
 
 ```sh
 mkdir -p ~/dotfiles-<名字> && cd ~/dotfiles-<名字>
@@ -25,20 +21,37 @@ git init -b main
 mkdir -p dfm-dotfiles/<模块>/dot-config/shell.d
 # 放入片段，例如 dfm-dotfiles/<模块>/dot-config/shell.d/10-<名字>.sh
 git add -A && git commit -m "overlay: <名字> seed"
-stow -d dfm-dotfiles -t ~ --dotfiles <模块>
+dfm link <模块>
 ```
 
 验证：新开 shell，`echo $PATH`、`alias`、`command -v <工具>` 符合预期。
 
-## 任务 B：加一条「环境相关」的配置
+## 任务 B：在 overlay 里加 / 改配置
 
 判断：这条配置换台机器就对吗？不对 → overlay。
 
-1. 在 `~/dotfiles-<名字>/dfm-dotfiles/<模块>/dot-config/shell.d/` 新建 `NN-<名字>.sh`
-2. 片段里只写本机事实（路径、代理、内网地址）
-3. 提交 overlay 仓库，然后 `stow -d ... -t ~ --dotfiles <模块>` 重链（或直接改已链接的文件）
+**改已有配置**：直接编辑 `~` 下的链接即可，写入落在 overlay：
 
-**不要**去改 base 的 `dot-bashrc` / `dot-zshrc`。
+```sh
+$EDITOR ~/.config/shell.d/30-conda.sh
+git -C ~/dotfiles-<名字> add -A && git -C ~/dotfiles-<名字> commit -m "overlay: ..."
+dfm push          # 只推可写的根
+```
+
+**新增文件**：默认就写进 overlay，不用指定根：
+
+```sh
+dfm add ~/.config/<工具> <模块>      # 移入 overlay 并立即链接
+git -C ~/dotfiles-<名字> add -A && git -C ~/dotfiles-<名字> commit -m "overlay: ..."
+dfm push
+```
+
+只有真要改 base 时才需要 `--root base`。
+
+**新增一条 shell 片段**：在 overlay 的 `<模块>/dot-config/shell.d/` 下建 `NN-<名字>.sh`，
+然后 `dfm link <模块>` 重链。
+
+**不要**去改 base 的 `dot-bashrc` / `dot-zshrc`；`dfm add` 默认写 overlay，写 base 必须 `--root base`。
 
 ## 任务 C：加一条「通用」的配置
 

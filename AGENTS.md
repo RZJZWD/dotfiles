@@ -7,7 +7,7 @@
 公私分离的 dotfiles：
 
 - **base**（本仓库，可公开）：通用配置 + `DFM.sh` + 文档
-- **overlay**（每台机器一个私有仓库，如 `~/dotfiles-home`）：环境事实、私有工具
+- **overlay**（每台机器**有且只有一个**私有仓库，如 `~/dotfiles-home`）：环境事实、私有工具
 - `DFM.sh` 负责 GNU Stow 链接，以及（目标态）git 拉取/推送
 
 设计见 [docs/design.md](docs/design.md)，旧机器迁移见 [docs/migration.md](docs/migration.md)。
@@ -36,6 +36,8 @@
 
 ## 当前实现状态
 
-- `DFM.sh` 仍是单根：`init/add/link/unlink/alias/list`；`repo` / `update` / `push` / `status` 尚未实现
-- 在 DFM 支持多根之前，overlay 用裸 `stow -d ~/dotfiles-<名字>/dfm-dotfiles -t ~ --dotfiles <模块>` 链接
+- `DFM.sh` 只有两个根：base（脚本所在目录）与 overlay（本机唯一的 `~/dotfiles-*`）；命令有 `link/unlink/list/status/repo/update/push`
+- 推送能力只存在于 git：`pushurl=DISABLED` 即只读，`dfm push` 会自动跳过
+- 根只有两个角色：`base` / `overlay`；`--root` 接受这两个名字（兼容 overlay 目录名）
+- `dfm add` 默认写 overlay 并立即链接；只有写 base 才需要 `--root base`
 - 本机 overlay：`~/dotfiles-home`，remote 为私有仓库 `https://github.com/RZJZWD/dotfiles-home.git`

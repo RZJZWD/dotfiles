@@ -7,7 +7,7 @@
 ~/dotfiles-<名字> overlay（机器私有配置，独立 git 仓库）
 ```
 
-> 迭代中：多根、`dfm repo/update/push/status` 尚未实现。
+> 多根与 `dfm repo/update/push/status` 已实现；仓库介绍待补写。
 
 文档：
 

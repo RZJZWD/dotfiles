@@ -41,6 +41,127 @@ DFM_COMMENT_END="# ===== DFM Dotfiles Manager - End ===== #"
 DEFAULT_ALIAS_NAME="dfm"
 
 # ===========================================
+# 多根：base + overlay
+# ===========================================
+# base = 脚本所在目录；overlay = $HOME/dotfiles-<名字>（含 dfm-dotfiles/）。
+# 只认这个命名约定，不扫描其它目录，也不维护任何配置文件。
+declare -a ROOT_NAMES=()
+declare -a ROOT_PATHS=()
+# overlay 的目录名（如 dotfiles-home），仅用于展示；角色名固定为 base / overlay
+OVERLAY_LABEL=""
+
+# 根只有两个角色：base（脚本所在目录）与 overlay（本机唯一一个 ~/dotfiles-*）。
+# overlay 一机一个；发现多个是配置错误，不做“让用户选一个”。
+load_roots() {
+    ROOT_NAMES=("base")
+    ROOT_PATHS=("$SCRIPT_DIR")
+    OVERLAY_LABEL=""
+    local dir base_real
+    local -a found=() found_paths=()
+    base_real="$(cd "$SCRIPT_DIR" && pwd -P)"
+    for dir in "$HOME"/dotfiles-*; do
+        [ -d "$dir" ] || continue
+        [ "$(cd "$dir" && pwd -P)" = "$base_real" ] && continue
+        [ -d "$dir/dfm-dotfiles" ] || continue
+        found+=("$(basename "$dir")")
+        found_paths+=("$dir")
+    done
+    if [ "${#found[@]}" -gt 1 ]; then
+        red "错误：检测到多个 overlay（${found[*]}）" >&2
+        blue "设计上一台机器只有一个 overlay；请删掉多余的，或把内容合并进一个" >&2
+        return 1
+    fi
+    if [ "${#found[@]}" -eq 1 ]; then
+        OVERLAY_LABEL="${found[0]}"
+        ROOT_NAMES+=("overlay")
+        ROOT_PATHS+=("${found_paths[0]}")
+    fi
+    return 0
+}
+
+# 展示用：base / overlay (dotfiles-home)
+root_label() {
+    local i="$1"
+    if [ "${ROOT_NAMES[$i]}" = "overlay" ] && [ -n "$OVERLAY_LABEL" ]; then
+        echo "overlay ($OVERLAY_LABEL)"
+    else
+        echo "${ROOT_NAMES[$i]}"
+    fi
+}
+
+root_index() {
+    local want="$1" i
+    # 允许用 overlay 的目录名作为别名（如 dotfiles-home）
+    if [ -n "$OVERLAY_LABEL" ] && [ "$want" = "$OVERLAY_LABEL" ]; then
+        want="overlay"
+    fi
+    for i in "${!ROOT_NAMES[@]}"; do
+        if [ "${ROOT_NAMES[$i]}" = "$want" ]; then
+            echo "$i"
+            return 0
+        fi
+    done
+    return 1
+}
+
+find_module_root() {
+    local module="$1" i found=-1
+    for i in "${!ROOT_PATHS[@]}"; do
+        if [ -d "${ROOT_PATHS[$i]}/dfm-dotfiles/$module" ]; then
+            if [ "$found" -ge 0 ]; then
+                red "错误：模块 '$module' 同时存在于 ${ROOT_NAMES[$found]} 和 ${ROOT_NAMES[$i]}" >&2
+                return 2
+            fi
+            found=$i
+        fi
+    done
+    if [ "$found" -lt 0 ]; then
+        red "错误：模块 '$module' 不存在于任何根" >&2
+        return 1
+    fi
+    echo "$found"
+}
+
+check_duplicate_modules() {
+    local -A seen=()
+    local i m name
+    for i in "${!ROOT_PATHS[@]}"; do
+        for m in "${ROOT_PATHS[$i]}"/dfm-dotfiles/*/; do
+            [ -d "$m" ] || continue
+            name="$(basename "$m")"
+            if [ -n "${seen[$name]:-}" ]; then
+                red "错误：模块 '$name' 同时存在于 ${seen[$name]} 和 ${ROOT_NAMES[$i]}"
+                return 1
+            fi
+            seen[$name]="${ROOT_NAMES[$i]}"
+        done
+    done
+}
+
+root_is_git() {
+    git -C "$1" rev-parse --git-dir >/dev/null 2>&1
+}
+
+# 输出: not-git / no-remote / read-only / push
+root_push_state() {
+    local p="$1" url
+    if ! root_is_git "$p"; then
+        echo "not-git"
+        return 0
+    fi
+    if ! git -C "$p" remote get-url origin >/dev/null 2>&1; then
+        echo "no-remote"
+        return 0
+    fi
+    url="$(git -C "$p" remote get-url --push origin 2>/dev/null || true)"
+    if [ -z "$url" ] || [ "$url" = "DISABLED" ]; then
+        echo "read-only"
+    else
+        echo "push"
+    fi
+}
+
+# ===========================================
 # 工具函数
 # ===========================================
 # 检查 GNU Stow 版本
@@ -233,7 +354,16 @@ generate_target_rel_path() {
 # ===========================================
 # 初始化函数
 init_dfm() {
-    local alias_name="${1:-}"
+    local alias_name="" push_base="" _arg
+    for _arg in "$@"; do
+        case "$_arg" in
+            --push-base)    push_base=yes ;;
+            --no-push-base) push_base=no ;;
+            -h|--help)      show_help; return 0 ;;
+            -*)             red "错误：未知参数 $_arg"; return 1 ;;
+            *)              alias_name="$_arg" ;;
+        esac
+    done
 
     yellow "\n====== DFM 初始化向导 ======"
     # 基本信息打印
@@ -291,7 +421,7 @@ init_dfm() {
     fi
 
     yellow "\n是否继续执行？(y/n)"
-    read -r confirm
+    read -r confirm || confirm=""
 
     case "$confirm" in
         [Yy]*)
@@ -311,7 +441,7 @@ init_dfm() {
 
             # 初始化确认后询问是否添加别名
             yellow "\n是否要将 $alias_name 命令添加到 shell 配置文件？(y/n)"
-            read -r add_alias_confirm
+            read -r add_alias_confirm || add_alias_confirm=""
             case "$add_alias_confirm" in
                 [Yy]*)
                     # 使用指定的别名或默认值
@@ -363,19 +493,89 @@ init_dfm() {
     echo "  └── zsh/"
     echo "      ├── dot-zshrc"
     echo "      └── dot-oh-my-zsh/"
+
+    # 决定 base 的推送权：直接写进 git 的 pushurl，不存额外配置
+    if [ -z "$push_base" ]; then
+        if [ -t 0 ]; then
+            yellow "\n这台机器允许推送 base 吗？(y/N)"
+            read -r _ans || _ans=""
+            case "$_ans" in
+                [Yy]*) push_base=yes ;;
+                *)     push_base=no ;;
+            esac
+        else
+            push_base=no
+        fi
+    fi
+    if root_is_git "$SCRIPT_DIR" && git -C "$SCRIPT_DIR" remote get-url origin >/dev/null 2>&1; then
+        if [ "$push_base" = "yes" ]; then
+            git -C "$SCRIPT_DIR" config --unset-all remote.origin.pushurl 2>/dev/null || true
+            green "✓ base 可推送（origin 原样保留）"
+        else
+            git -C "$SCRIPT_DIR" remote set-url --push origin DISABLED
+            green "✓ base 设为只读（pushurl=DISABLED）"
+        fi
+    fi
 }
 
 # 添加配置文件
 add_dfm() {
-    if [ $# -lt 1 ];then
+    local -a _pos=()
+    local root_name="base" root_given=0 _a
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --root|-r)
+                [ $# -ge 2 ] || { red "错误：--root 需要一个根名"; return 1; }
+                root_name="$2"
+                root_given=1
+                shift 2
+                ;;
+            -h|--help)
+                show_help
+                return 0
+                ;;
+            -*)
+                red "错误：未知参数 $1"
+                return 1
+                ;;
+            *)
+                _pos+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    if [ ${#_pos[@]} -lt 1 ]; then
         red "错误：请指定源文件路径"
-        echo "用法: dfm add <源文件路径> [模块名]"
-        echo "示例: dfm add ~/.bashrc bash"
-        echo "示例: dfm add ~/.config/nvim nvim"
+        echo "用法: dfm add [--root <根>] <源文件路径> [模块名]"
+        echo "示例: dfm add ~/.config/company-tool company-tool   # 默认写 overlay"
+        echo "示例: dfm add --root base ~/.bashrc bash            # 写 base 必须显式指定"
         return 1
     fi
-    local source_path="$1"
-    local module_name="${2:-}"
+
+    local source_path="${_pos[0]}"
+    local module_name="${_pos[1]:-}"
+
+    load_roots || return 1
+
+    # 默认写 overlay（本机私有配置）；写 base 必须显式 --root base
+    if [ "$root_given" -eq 0 ]; then
+        if [ -z "$OVERLAY_LABEL" ]; then
+            red "错误：本机没有 overlay，无法确定默认根"
+            blue "要写入 base 请显式: dfm add --root base <源> [模块]"
+            return 1
+        fi
+        root_name="overlay"
+        blue "默认根: overlay ($OVERLAY_LABEL)（要写 base 请加 --root base）"
+    fi
+
+    local root_idx
+    if ! root_idx="$(root_index "$root_name")"; then
+        red "错误：未知根 '$root_name'（可用: ${ROOT_NAMES[*]}）"
+        return 1
+    fi
+    local root_path="${ROOT_PATHS[$root_idx]}"
+    local root_dir="$root_path/dfm-dotfiles"
 
     # 1. 路径预处理：展开 ~ 并转为绝对路径
     source_path="${source_path/#\~/$HOME}"
@@ -407,7 +607,24 @@ add_dfm() {
     green "\n====== DFM 添加配置 ======"
     blue "源文件路径: $source_path"
     blue "模块名称: $module_name"
-    blue "配置仓库: $DOTFILES_DIR"
+    blue "配置仓库: $root_dir（$(root_label "$root_idx")）"
+
+    # 5.5 源文件不能是已有的软链（说明已经被 DFM 管着）
+    if [ -L "$source_path" ]; then
+        red "错误：$source_path 是符号链接，可能已由 DFM 管理"
+        blue "要改内容直接编辑它；要换模块请先 dfm unlink 再处理"
+        return 1
+    fi
+
+    # 5.6 模块名不能和其它根重名
+    local _i
+    for _i in "${!ROOT_PATHS[@]}"; do
+        [ "$_i" = "$root_idx" ] && continue
+        if [ -d "${ROOT_PATHS[$_i]}/dfm-dotfiles/$module_name" ]; then
+            red "错误：模块 '$module_name' 已存在于 ${ROOT_NAMES[$_i]}"
+            return 1
+        fi
+    done
 
     # 6. 创建备份文件 源文件+.bak
     local backup_path="${source_path}.bak"
@@ -425,7 +642,7 @@ add_dfm() {
     target_rel_path=$(generate_target_rel_path "$source_path")
 
     # 8. 构建目标路径（模块目录下）
-    local target_path="$DOTFILES_DIR/$module_name/$target_rel_path"
+    local target_path="$root_dir/$module_name/$target_rel_path"
     local target_dir=$(dirname "$target_path")
 
     # 检查目标路径是否已存在（避免重复添加）
@@ -454,166 +671,387 @@ add_dfm() {
     fi
 
     yellow "\n文件已移至仓库，原位置已备份为 .bak"
-    blue "现在可以使用 'dfm link $module_name' 创建符号链接"
+
+    yellow "链接模块 $module_name ..."
+    if stow -d "$root_dir" -t "$HOME" --dotfiles "$module_name"; then
+        green "✓ 已链接（以后改动直接编辑链接即可，写入会落在 $(root_label "$root_idx")）"
+    else
+        red "✗ 链接失败，请手动执行: dfm link $module_name"
+        return 1
+    fi
 }
 
 # ===========================================
-# 通用 Stow 操作（封装链接或取消链接）
+# 通用 Stow 操作（跨根链接 / 取消链接）
 # ===========================================
 stow_operation() {
-    local action="$1"      # "link" 或 "unlink"
-    local module="${2:-}"
+    local action="$1" module="${2:-}"
+    local verb opts i idx pkg name count=0
 
-    # 检查 stow 版本
     if ! check_stow_version; then
         return 1
     fi
 
-    # 检查仓库是否存在
-    if [ ! -d "$DOTFILES_DIR" ]; then
-        red "错误：配置仓库不存在 - $DOTFILES_DIR"
-        blue "请先运行 'dfm init' 初始化"
-        return 1
-    fi
+    case "$action" in
+        link)   verb="链接";   opts="" ;;
+        unlink) verb="取消链接"; opts="-D" ;;
+        *) red "内部错误：未知动作 '$action'"; return 1 ;;
+    esac
 
-    # 根据动作设置提示信息和 Stow 命令选项
-    local action_verb
-    local stow_opts=""
-    if [ "$action" = "link" ]; then
-        action_verb="链接"
-        stow_opts=""  # link 不需要额外选项
-    elif [ "$action" = "unlink" ]; then
-        action_verb="取消链接"
-        stow_opts="-D"
-    else
-        red "内部错误：未知动作 '$action'"
-        return 1
-    fi
+    load_roots || return 1
+    check_duplicate_modules || return 1
 
-    yellow "\n====== DFM ${action_verb}配置 ======"
-    blue "仓库目录: $DOTFILES_DIR"
+    yellow "\n====== DFM ${verb}配置 ======"
+    for i in "${!ROOT_PATHS[@]}"; do
+        blue "  $(root_label "$i"): ${ROOT_PATHS[$i]}"
+    done
     blue "目标目录: $HOME"
-    blue "Stow 模式: --dotfiles (自动将 dot- 前缀映射为 .)"
 
     if [ -n "$module" ]; then
-        # 操作单个模块
-        if [ ! -d "$DOTFILES_DIR/$module" ]; then
-            red "错误：模块 '$module' 不存在于仓库中"
-            return 1
-        fi
-        yellow "\n${action_verb}模块: $module"
+        idx="$(find_module_root "$module")" || return $?
+        yellow "\n${verb}模块: $module（$(root_label "$idx")）"
         set -x
-        stow $stow_opts -d "$DOTFILES_DIR" -t "$HOME" --dotfiles "$module"
+        stow $opts -d "${ROOT_PATHS[$idx]}/dfm-dotfiles" -t "$HOME" --dotfiles "$module"
         set +x
-        green "✓ 模块 '$module' ${action_verb}成功"
-    else
-        # 操作所有模块
-        local count=0
-        for pkg in "$DOTFILES_DIR"/*/; do
-            if [ -d "$pkg" ]; then
-                module_name=$(basename "$pkg")
-                yellow "\n${action_verb}模块: $module_name"
-                set -x
-                stow $stow_opts -d "$DOTFILES_DIR" -t "$HOME" --dotfiles "$module_name"
-                set +x
-                green "✓ 模块 '$module_name' ${action_verb}成功"
-                count=$((count + 1))
-            fi
+        green "✓ 模块 '$module' ${verb}成功"
+        return 0
+    fi
+
+    for i in "${!ROOT_PATHS[@]}"; do
+        for pkg in "${ROOT_PATHS[$i]}"/dfm-dotfiles/*/; do
+            [ -d "$pkg" ] || continue
+            name="$(basename "$pkg")"
+            yellow "\n${verb}模块: $name（$(root_label "$i")）"
+            set -x
+            stow $opts -d "${ROOT_PATHS[$i]}/dfm-dotfiles" -t "$HOME" --dotfiles "$name"
+            set +x
+            green "✓ 模块 '$name' ${verb}成功"
+            count=$((count + 1))
         done
-        if [ $count -eq 0 ]; then
-            yellow "仓库中没有找到任何模块"
-        else
-            green "\n✓ 共${action_verb} $count 个模块"
-        fi
+    done
+
+    if [ "$count" -eq 0 ]; then
+        yellow "没有找到任何模块"
+    else
+        green "\n✓ 共${verb} $count 个模块"
     fi
 }
+
 # 仅添加别名
 alias_dfm() {
     local alias_name="${1:-$DEFAULT_ALIAS_NAME}"
     add_aliases "$alias_name"
 }
 
-# 列出添加的配置文件
+# 列出所有根的内容
 list_dfm(){
-    # 新增：接受最大深度参数，默认 2
     local max_depth="${1:-2}"
-    # 如果传入的参数不是正整数，则重置为 2
     if ! echo "$max_depth" | grep -qE '^[0-9]+$'; then
         yellow "警告：深度必须为数字，已恢复默认值 2"
         max_depth=2
     fi
 
-    # 检查仓库是否存在
-    if [ ! -d "$DOTFILES_DIR" ];then
-        red "错误：配置仓库不存在 - $DOTFILES_DIR"
-        blue "请先运行 'dfm init' 初始化"
-        return 1    # 缺少 return，会导致继续执行，建议加上
-    fi
-
-    yellow "\n====== DFM 仓库内容 ======"
-    blue "仓库目录: $DOTFILES_DIR"
-    echo ""
-
-    if command -v tree &>/dev/null; then
-        # 使用 tree 显示目录树（更美观）
-        tree -C --noreport -L "$max_depth" "$DOTFILES_DIR"
-    else
-        blue "提示: 安装 'tree' 可获得更详细的树形结构"
+    load_roots || return 1
+    yellow "\n====== DFM 内容 ======"
+    local i p
+    for i in "${!ROOT_PATHS[@]}"; do
+        p="${ROOT_PATHS[$i]}"
         echo ""
-        # 检查仓库是否为空
-        if [ -z "$(ls -A "$DOTFILES_DIR" 2>dev/null)" ];then
-            yellow "仓库为空，还没有添加任何配置文件"
-        else
-            # 使用 ls 列出根目录内容（即各个模块）
-            ls "$DOTFILES_DIR"
+        blue "[$(root_label "$i")] $p"
+        if [ ! -d "$p/dfm-dotfiles" ]; then
+            yellow "  （没有 dfm-dotfiles/）"
+            continue
         fi
+        if command -v tree &>/dev/null; then
+            tree -C --noreport -L "$max_depth" "$p/dfm-dotfiles"
+        else
+            ls "$p/dfm-dotfiles"
+        fi
+    done
+}
 
+# 状态：每个根的模块数、git 状态、推送能力
+status_dfm() {
+    load_roots || return 1
+    check_duplicate_modules || true
+    yellow "\n====== DFM 状态 ======"
+    local i p state branch upstream dirty mods ab sync
+    for i in "${!ROOT_PATHS[@]}"; do
+        p="${ROOT_PATHS[$i]}"
+        echo ""
+        blue "[$(root_label "$i")] $p"
+        mods=0
+        if [ -d "$p/dfm-dotfiles" ]; then
+            mods=$(find "$p/dfm-dotfiles" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+        fi
+        echo "  模块: $mods"
+        state="$(root_push_state "$p")"
+        case "$state" in
+            not-git)   echo "  git: 无（纯本地目录）" ;;
+            no-remote) echo "  git: 有仓库但没有 origin" ;;
+            read-only) echo "  git: 只读（pushurl=DISABLED）" ;;
+            push)      echo "  git: 可推送" ;;
+        esac
+        if root_is_git "$p"; then
+            branch="$(git -C "$p" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+            upstream="$(git -C "$p" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+            dirty="$(git -C "$p" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+            sync=""
+            if [ -n "$upstream" ]; then
+                ab="$(git -C "$p" rev-list --left-right --count "$upstream...HEAD" 2>/dev/null || true)"
+                if [ -n "$ab" ]; then
+                    sync="  (落后 ${ab%%$'\t'*} / 领先 ${ab##*$'\t'})"
+                fi
+            fi
+            echo "  分支: $branch${upstream:+ → $upstream}$sync"
+            if [ "$dirty" -gt 0 ]; then
+                echo "  工作区: 脏（$dirty 项）"
+            else
+                echo "  工作区: 干净"
+            fi
+        fi
+    done
+    echo ""
+}
+
+# 拉取：每个 git 根 ff-only，随后重新链接
+update_dfm() {
+    local dry="${1:-}"
+    load_roots || return 1
+    if ! check_stow_version; then
+        return 1
     fi
+    local i p rc=0
+    yellow "\n====== DFM 更新 ======"
+    for i in "${!ROOT_PATHS[@]}"; do
+        p="${ROOT_PATHS[$i]}"
+        if ! root_is_git "$p"; then
+            blue "[$(root_label "$i")] 非 git 仓库，跳过"
+            continue
+        fi
+        if [ -n "$(git -C "$p" status --porcelain 2>/dev/null)" ]; then
+            yellow "[$(root_label "$i")] 工作区脏，跳过拉取"
+            rc=1
+            continue
+        fi
+        if ! git -C "$p" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+            yellow "[$(root_label "$i")] 没有 upstream，跳过拉取"
+            rc=1
+            continue
+        fi
+        if [ "$dry" = "--dry-run" ]; then
+            blue "[$(root_label "$i")] 将执行: git -C $p pull --ff-only"
+            continue
+        fi
+        yellow "[$(root_label "$i")] git pull --ff-only"
+        if git -C "$p" pull --ff-only; then
+            green "✓ 已更新"
+        else
+            red "✗ 更新失败"
+            rc=1
+        fi
+    done
+    if [ "$dry" = "--dry-run" ]; then
+        return $rc
+    fi
+    echo ""
+    yellow "重新链接所有模块..."
+    stow_operation link || rc=1
+    return $rc
+}
+
+# 推送：只推可写根，只读根跳过
+push_dfm() {
+    local dry="${1:-}"
+    load_roots || return 1
+    local i p state rc=0
+    yellow "\n====== DFM 推送 ======"
+    for i in "${!ROOT_PATHS[@]}"; do
+        p="${ROOT_PATHS[$i]}"
+        state="$(root_push_state "$p")"
+        case "$state" in
+            not-git|no-remote)
+                blue "[$(root_label "$i")] $state，跳过"
+                continue
+                ;;
+            read-only)
+                yellow "[$(root_label "$i")] skipped (read-only)"
+                continue
+                ;;
+        esac
+        if [ -n "$(git -C "$p" status --porcelain 2>/dev/null)" ]; then
+            red "[$(root_label "$i")] 工作区脏，拒绝推送"
+            rc=1
+            continue
+        fi
+        if ! git -C "$p" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+            yellow "[$(root_label "$i")] 没有 upstream，跳过推送"
+            rc=1
+            continue
+        fi
+        if [ "$dry" = "--dry-run" ]; then
+            blue "[$(root_label "$i")] 将执行: git -C $p push"
+            continue
+        fi
+        yellow "[$(root_label "$i")] git push"
+        if git -C "$p" push; then
+            green "✓ 已推送"
+        else
+            red "✗ 推送失败"
+            rc=1
+        fi
+    done
+    return $rc
+}
+
+# repo 子命令：根与推送能力都直接读写 git，不存额外状态
+repo_cmd() {
+    local sub="${1:-list}"
+    shift || true
+    case "$sub" in
+        list)
+            load_roots || return 1
+            yellow "\n====== DFM 根 ======"
+            local i p state remote branch
+            for i in "${!ROOT_PATHS[@]}"; do
+                p="${ROOT_PATHS[$i]}"
+                state="$(root_push_state "$p")"
+                printf '  %-26s %-40s %s\n' "$(root_label "$i")" "$p" "$state"
+                if root_is_git "$p"; then
+                    remote="$(git -C "$p" config --get remote.origin.url 2>/dev/null || echo '-')"
+                    branch="$(git -C "$p" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '-')"
+                    printf '  %-26s remote: %s  branch: %s\n' "" "$remote" "$branch"
+                fi
+            done
+            ;;
+        add)
+            local url="${1:-}" name="${2:-}" dest idx pkg
+            [ -n "$url" ] || { red "用法: dfm repo add <git-url> [名字]"; return 1; }
+            load_roots || return 1
+            if [ -n "$OVERLAY_LABEL" ]; then
+                red "错误：本机已经有 overlay（$OVERLAY_LABEL）"
+                blue "设计上一台机器只有一个 overlay；请先删除旧的，或直接在旧仓库里更新"
+                return 1
+            fi
+            if [ -z "$name" ]; then
+                name="$(basename "$url" .git)"
+                name="${name#dotfiles-}"
+            fi
+            dest="$HOME/dotfiles-$name"
+            if [ -e "$dest" ]; then
+                red "错误：目标已存在 - $dest"
+                return 1
+            fi
+            git clone "$url" "$dest"
+            green "✓ 已克隆到 $dest"
+            load_roots || return 1
+            for pkg in "$dest"/dfm-dotfiles/*/; do
+                [ -d "$pkg" ] || continue
+                stow -d "$dest/dfm-dotfiles" -t "$HOME" --dotfiles "$(basename "$pkg")"
+            done
+            green "✓ 已链接新根的模块"
+            ;;
+        readonly)
+            local name="${1:-}" idx
+            [ -n "$name" ] || { red "用法: dfm repo readonly <根>"; return 1; }
+            load_roots || return 1
+            idx="$(root_index "$name")" || { red "错误：未知根 '$name'（可用: ${ROOT_NAMES[*]}）"; return 1; }
+            if ! root_is_git "${ROOT_PATHS[$idx]}"; then
+                red "错误：该根不是 git 仓库"
+                return 1
+            fi
+            local _cur
+            _cur="$(git -C "${ROOT_PATHS[$idx]}" config --get remote.origin.pushurl 2>/dev/null || true)"
+            if [ -n "$_cur" ] && [ "$_cur" != "DISABLED" ]; then
+                yellow "注意：会覆盖已有的 pushurl（$_cur）；恢复时请重新 repo pushurl"
+            fi
+            git -C "${ROOT_PATHS[$idx]}" remote set-url --push origin DISABLED
+            green "✓ $(root_label "$idx") 已设为只读（pushurl=DISABLED）"
+            ;;
+        writable)
+            local name="${1:-}" idx
+            [ -n "$name" ] || { red "用法: dfm repo writable <根>"; return 1; }
+            load_roots || return 1
+            idx="$(root_index "$name")" || { red "错误：未知根 '$name'（可用: ${ROOT_NAMES[*]}）"; return 1; }
+            if ! root_is_git "${ROOT_PATHS[$idx]}"; then
+                red "错误：该根不是 git 仓库"
+                return 1
+            fi
+            local -a _urls=()
+            if [ -n "$(git -C "${ROOT_PATHS[$idx]}" config --get-all remote.origin.pushurl 2>/dev/null || true)" ]; then
+                mapfile -t _urls < <(git -C "${ROOT_PATHS[$idx]}" config --get-all remote.origin.pushurl 2>/dev/null || true)
+            fi
+            if [ "${#_urls[@]}" -eq 0 ]; then
+                green "✓ $(root_label "$idx") 本来就是可推送状态"
+            elif [ "${#_urls[@]}" -eq 1 ] && [ "${_urls[0]}" = "DISABLED" ]; then
+                git -C "${ROOT_PATHS[$idx]}" config --unset-all remote.origin.pushurl 2>/dev/null || true
+                green "✓ $(root_label "$idx") 已恢复推送"
+            else
+                yellow "已有自定义 pushurl（${_urls[*]}），保持不动"
+            fi
+            ;;
+        pushurl)
+            local name="${1:-}" url="${2:-}" idx
+            [ -n "$name" ] && [ -n "$url" ] || { red "用法: dfm repo pushurl <根> <url>"; return 1; }
+            load_roots || return 1
+            idx="$(root_index "$name")" || { red "错误：未知根 '$name'（可用: ${ROOT_NAMES[*]}）"; return 1; }
+            if ! root_is_git "${ROOT_PATHS[$idx]}"; then
+                red "错误：该根不是 git 仓库"
+                return 1
+            fi
+            git -C "${ROOT_PATHS[$idx]}" config --unset-all remote.origin.pushurl 2>/dev/null || true
+            git -C "${ROOT_PATHS[$idx]}" remote set-url --add --push origin "$url"
+            green "✓ $(root_label "$idx") 的 push URL 已设为 $url"
+            ;;
+        *)
+            red "未知 repo 子命令: $sub"
+            echo "用法: dfm repo list|add|readonly|writable|pushurl"
+            return 1
+            ;;
+    esac
 }
 
 # 显示帮助信息
 show_help() {
     cat << EOF
-DFM - Dotfiles Manager (基于 GNU Stow)
+DFM - Dotfiles Manager（基于 GNU Stow，多根：base + overlay）
 
 用法: $SCRIPT_NAME <命令> [参数]
 
-注意: DFM只能管理用户家目录下的配置文件，如果添加非家目录的配置文件会退出脚本
+根（root）：
+  base      = 本脚本所在目录（通常是 ~/dotfiles）
+  overlay   = $HOME/dotfiles-<名字>（含 dfm-dotfiles/，各自独立的 git 仓库）
+  DFM 不维护任何配置文件：根按目录约定发现，推送能力读各仓库的 pushurl。
 
 命令:
-  init [别名]           初始化 DFM 配置目录（可指定别名，默认 dfm）
-  add <源文件路径> [模块名]  添加配置文件到指定模块（模块名可选，自动推断）
-  link [模块名]         使用 stow 链接配置文件（不指定模块则链接所有）
-  alias [别名]          仅为脚本添加别名（不初始化仓库）
-  list|ls|tree          列出已添加的配置文件（可选指定显示深度，默认 2）
-  help|--help|-h        显示此帮助信息
+  init [别名] [--push-base|--no-push-base]
+                        初始化；同时决定这台机器能否推送 base
+  link [模块名]         链接所有根的全部模块，或只链接指定模块
+  unlink [模块名]       取消链接（用法同 link）
+  list|ls|tree [深度]   按根列出内容（默认深度 2）
+  status                每个根的模块数、git 状态、推送能力
+  repo list             列出发现的根
+  repo add <url> [名字]  clone 到 ~/dotfiles-<名字> 并链接
+  repo readonly <根>    禁用该根推送（pushurl=DISABLED）
+  repo writable <根>    恢复该根推送
+  repo pushurl <根> <url> 设置独立的推送地址
+  update [--dry-run]    每个 git 根 pull --ff-only，随后重新链接
+  push [--dry-run]      每个根推送；只读根报 skipped
+  add [--root <根>] <源文件路径> [模块名]
+                        移入 overlay（默认）并立即链接；写 base 必须 --root base
+  alias [别名]          仅添加别名
+  help|--help|-h        显示帮助
 
 示例:
-  $SCRIPT_NAME init                     初始化，使用默认别名 dfm
-  $SCRIPT_NAME init mydfm               初始化，使用别名 mydfm
-  $SCRIPT_NAME add ~/.bashrc bash       添加 .bashrc 到 bash 模块
-  $SCRIPT_NAME add ~/.config/nvim nvim  添加 nvim 配置到 nvim 模块
-  $SCRIPT_NAME add ~/.oh-my-zsh zsh     添加 oh-my-zsh 插件到 zsh 模块
-  $SCRIPT_NAME link nvim                仅链接 nvim 模块
-  $SCRIPT_NAME link                     链接所有模块
-  $SCRIPT_NAME alias                    添加默认别名 dfm
-  $SCRIPT_NAME alias dot                添加别名 dot
-  $SCRIPT_NAME list                     列出已添加的配置文件
+  $SCRIPT_NAME status                    看各根状态
+  $SCRIPT_NAME link                      链接 base 和所有 overlay
+  $SCRIPT_NAME link interop              只链 interop（自动定位到所在根）
+  $SCRIPT_NAME repo readonly base        这台机器不允许推 base
+  $SCRIPT_NAME update                    拉取所有根后重新链接
 
-目录结构说明:
-  dfm-dotfiles/         配置根目录
-    ├── nvim/           模块目录
-    │   └── dot-config/
-    │       └── nvim/   原始配置目录（对应 ~/.config/nvim）
-    ├── bash/
-    │   └── dot-bashrc  点文件（仓库中为 dot- 前缀，链接后变为 .bashrc）
-    └── zsh/
-        ├── dot-zshrc
-        └── dot-oh-my-zsh/   （对应 ~/.oh-my-zsh）
-
-Stow 集成:
-  所有 link 操作均启用 --dotfiles 选项，自动将仓库中的 dot- 前缀映射为实际点号。
-  例如：dot-bashrc → ~/.bashrc，dot-config/nvim → ~/.config/nvim
+约定:
+  dfm-dotfiles/<模块>/dot-xxx   经 stow --dotfiles 映射为 ~/.xxx
+  ~/.config/shell.d/*.sh        由 base 的 rc 按文件名顺序 source（环境相关的扩展点）
 EOF
 }
 
@@ -648,6 +1086,22 @@ main() {
         "list"|"ls"|"tree")
             shift
             list_dfm "$@"
+            ;;
+        "status")
+            shift
+            status_dfm "$@"
+            ;;
+        "update")
+            shift
+            update_dfm "$@"
+            ;;
+        "push")
+            shift
+            push_dfm "$@"
+            ;;
+        "repo")
+            shift
+            repo_cmd "$@"
             ;;
         "help"|"--help"|"-h")
             show_help
