@@ -154,7 +154,7 @@ sudo bash ~/.config/interop/install-system.sh
 作为参考，这台机器上实际执行的顺序是：
 
 1. `git branch overlay-seed`：把 interop + conda + shell.d 垫片提交到一个只含 overlay 内容的分支
-2. `git archive overlay-seed | tar -x -C ~/dotfiles-home` → `git init` → overlay 仓库（目前没有 remote）
+2. `git archive overlay-seed | tar -x -C ~/dotfiles-home` → `git init` → overlay 仓库（remote 已指向私有仓库）
 3. `dfm unlink interop` + `stow -d ~/dotfiles-home/dfm-dotfiles -t ~ --dotfiles interop shell`
 4. base 的 rc 加 `shell.d` 加载器、删 conda 块、`alias dfm` 用 `$HOME`、tealdeer 路径改 `~/.tldr`
 5. 验证：interactive bash/zsh 都能拿到 conda、Windows 白名单、凭据

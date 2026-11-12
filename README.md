@@ -8,4 +8,11 @@
 ```
 
 > 迭代中：多根、`dfm repo/update/push/status` 尚未实现。
-> 设计依据见 [docs/design.md](docs/design.md)；仓库介绍、安装步骤与用法等实现稳定后再补。
+
+文档：
+
+- [docs/design.md](docs/design.md) — 设计（公私分离、契约、DFM 命令）
+- [docs/migration.md](docs/migration.md) — 已有机器迁移（先 overlay 后 base）
+- [docs/runbook.md](docs/runbook.md) — 按任务的操作手册
+- [AGENTS.md](AGENTS.md) — 给 AI agent 的常驻约束
+- [skills/dfm-ops/SKILL.md](skills/dfm-ops/SKILL.md) — 同一套规则的可加载技能
