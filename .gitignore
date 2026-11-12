@@ -1,0 +1,3 @@
+# overlay 仓库的兜底：正常布局是 $HOME 下的同级目录（~/dotfiles-<名字>），
+# 本来就不会进 base 的 git；这条只是防止有人把 overlay clone 进 base 工作树后污染 git status。
+dotfiles-*/
