@@ -116,7 +116,7 @@ find_module_root() {
         fi
     done
     if [ "$found" -lt 0 ]; then
-        red "错误：模块 '$module' 不存在于任何根" >&2
+        red "错误：模块 '$module' 不存在于任何根（新配置请先 dfm add）" >&2
         return 1
     fi
     echo "$found"
@@ -347,6 +347,32 @@ generate_target_rel_path() {
     converted=$(echo "$rel_path" | sed -E 's@(^|/)\.([^/]*)@\1dot-\2@g')
 
     echo "$converted"
+}
+
+# 模块当前是否有链接（用于 unlink 的“未链接”判断）
+module_has_links() {
+    local root_dir="$1" module="$2" rel target
+    [ -d "$root_dir/dfm-dotfiles/$module" ] || return 1
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        target="$(home_path_of "$rel")"
+        [ -L "$target" ] && return 0
+    done < <(cd "$root_dir/dfm-dotfiles/$module" && find . \( -type f -o -type l \) -printf '%P\n')
+    return 1
+}
+
+# 把仓库内的相对路径（dot- 形式）还原成 $HOME 下的真实路径
+home_path_of() {
+    local rel="$1" comp out=""
+    local -a comps=()
+    IFS='/' read -r -a comps <<< "$rel"
+    for comp in "${comps[@]}"; do
+        case "$comp" in
+            dot-*) comp=".${comp#dot-}" ;;
+        esac
+        out="${out:+$out/}$comp"
+    done
+    echo "$HOME/$out"
 }
 
 # ===========================================
@@ -709,6 +735,10 @@ stow_operation() {
 
     if [ -n "$module" ]; then
         idx="$(find_module_root "$module")" || return $?
+        if [ "$action" = "unlink" ] && ! module_has_links "${ROOT_PATHS[$idx]}" "$module"; then
+            yellow "模块 '$module'（$(root_label "$idx")）当前未链接，无需操作"
+            return 0
+        fi
         yellow "\n${verb}模块: $module（$(root_label "$idx")）"
         set -x
         stow $opts -d "${ROOT_PATHS[$idx]}/dfm-dotfiles" -t "$HOME" --dotfiles "$module"
@@ -721,6 +751,10 @@ stow_operation() {
         for pkg in "${ROOT_PATHS[$i]}"/dfm-dotfiles/*/; do
             [ -d "$pkg" ] || continue
             name="$(basename "$pkg")"
+            if [ "$action" = "unlink" ] && ! module_has_links "${ROOT_PATHS[$i]}" "$name"; then
+                blue "模块 '$name'（$(root_label "$i")）未链接，跳过"
+                continue
+            fi
             yellow "\n${verb}模块: $name（$(root_label "$i")）"
             set -x
             stow $opts -d "${ROOT_PATHS[$i]}/dfm-dotfiles" -t "$HOME" --dotfiles "$name"
@@ -904,6 +938,89 @@ push_dfm() {
     return $rc
 }
 
+# 移出：add 的逆操作，把模块里的文件搬回 $HOME，并删掉仓库里的模块
+remove_dfm() {
+    local root_name="overlay" root_given=0 force=0 _a
+    local -a _pos=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --root|-r)  root_name="$2"; root_given=1; shift 2 ;;
+            --force|-f) force=1; shift ;;
+            -h|--help)  show_help; return 0 ;;
+            -*)         red "错误：未知参数 $1"; return 1 ;;
+            *)          _pos+=("$1"); shift ;;
+        esac
+    done
+
+    if [ ${#_pos[@]} -lt 1 ]; then
+        red "错误：请指定要移出的模块"
+        echo "用法: dfm remove [--root <根>] [--force] <模块名>"
+        echo "示例: dfm remove company-tool             # 从 overlay 移出"
+        echo "示例: dfm remove --root base bash          # 从 base 移出"
+        return 1
+    fi
+    local module="${_pos[0]}"
+
+    load_roots || return 1
+    if [ "$root_given" -eq 0 ] && [ -z "$OVERLAY_LABEL" ]; then
+        red "错误：本机没有 overlay，无法确定默认根"
+        blue "要移出 base 的模块请显式: dfm remove --root base <模块>"
+        return 1
+    fi
+
+    local idx root_dir module_dir
+    idx="$(root_index "$root_name")" || { red "错误：未知根 '$root_name'（可用: ${ROOT_NAMES[*]}）"; return 1; }
+    root_dir="${ROOT_PATHS[$idx]}"
+    module_dir="$root_dir/dfm-dotfiles/$module"
+    if [ ! -d "$module_dir" ]; then
+        red "错误：模块 '$module' 不存在于 $(root_label "$idx")"
+        return 1
+    fi
+
+    # 目标位置冲突检查（$HOME 下已有同名真实文件/目录）
+    local rel target conflicts=0 hard=0
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        target="$(home_path_of "$rel")"
+        if [ -d "$target" ] && [ ! -L "$target" ]; then
+            red "冲突：$target 是目录，remove 不会覆盖目录"
+            hard=$((hard + 1))
+        elif [ -e "$target" ] && [ ! -L "$target" ]; then
+            red "冲突：$target 已存在且不是软链"
+            conflicts=$((conflicts + 1))
+        fi
+    done < <(cd "$module_dir" && find . \( -type f -o -type l \) -printf '%P\n')
+
+    if [ "$hard" -gt 0 ]; then
+        blue "请先手动处理这些目录（改名或删除），再执行 remove"
+        return 1
+    fi
+    if [ "$conflicts" -gt 0 ] && [ "$force" -eq 0 ]; then
+        red "有 $conflicts 个冲突，确认要覆盖请加 --force"
+        return 1
+    fi
+
+    # 先摘链接，再把文件搬回 $HOME
+    stow -D -d "$root_dir/dfm-dotfiles" -t "$HOME" --dotfiles "$module" >/dev/null 2>&1 || true
+
+    local count=0
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        target="$(home_path_of "$rel")"
+        mkdir -p "$(dirname "$target")"
+        mv "$module_dir/$rel" "$target"
+        count=$((count + 1))
+    done < <(cd "$module_dir" && find . \( -type f -o -type l \) -printf '%P\n')
+
+    find "$module_dir" -depth -type d -empty -delete 2>/dev/null || true
+    if [ -d "$module_dir" ]; then
+        rm -rf "$module_dir"
+    fi
+
+    green "✓ 已从 $(root_label "$idx") 移出 $count 个文件到 \$HOME"
+    blue "仓库里的删除是未提交状态；确认无误后自己 commit"
+}
+
 # repo 子命令：根与推送能力都直接读写 git，不存额外状态
 repo_cmd() {
     local sub="${1:-list}"
@@ -1039,6 +1156,8 @@ DFM - Dotfiles Manager（基于 GNU Stow，多根：base + overlay）
   push [--dry-run]      每个根推送；只读根报 skipped
   add [--root <根>] <源文件路径> [模块名]
                         移入 overlay（默认）并立即链接；写 base 必须 --root base
+  remove [--root <根>] [--force] <模块名>
+                        把模块移回 \$HOME（add 的逆操作）；--force 只覆盖文件
   alias [别名]          仅添加别名
   help|--help|-h        显示帮助
 
@@ -1098,6 +1217,10 @@ main() {
         "push")
             shift
             push_dfm "$@"
+            ;;
+        "remove"|"rm")
+            shift
+            remove_dfm "$@"
             ;;
         "repo")
             shift

@@ -36,8 +36,8 @@
 
 ## 当前实现状态
 
-- `DFM.sh` 只有两个根：base（脚本所在目录）与 overlay（本机唯一的 `~/dotfiles-*`）；命令有 `link/unlink/list/status/repo/update/push`
+- `DFM.sh` 只有两个根：base（脚本所在目录）与 overlay（本机唯一的 `~/dotfiles-*`）；命令有 `link/unlink/list/status/repo/update/push/add/remove`
 - 推送能力只存在于 git：`pushurl=DISABLED` 即只读，`dfm push` 会自动跳过
 - 根只有两个角色：`base` / `overlay`；`--root` 接受这两个名字（兼容 overlay 目录名）
-- `dfm add` 默认写 overlay 并立即链接；只有写 base 才需要 `--root base`
+- `dfm add` 默认写 overlay 并立即链接；`dfm remove` 是其逆操作，把模块搬回 `$HOME`
 - 本机 overlay：`~/dotfiles-home`，remote 为私有仓库 `https://github.com/RZJZWD/dotfiles-home.git`

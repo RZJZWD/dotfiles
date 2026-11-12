@@ -51,6 +51,16 @@ dfm push
 **新增一条 shell 片段**：在 overlay 的 `<模块>/dot-config/shell.d/` 下建 `NN-<名字>.sh`，
 然后 `dfm link <模块>` 重链。
 
+**移出模块**（`add` 的逆操作，文件搬回 `$HOME`）：
+
+```sh
+dfm remove <模块>                # 默认从 overlay 移出
+dfm remove --root base <模块>    # 从 base 移出
+# 目标位置已有真实文件时会拒绝；确认覆盖加 --force
+```
+
+移出后仓库里是未提交的删除，确认无误再 commit。
+
 **不要**去改 base 的 `dot-bashrc` / `dot-zshrc`；`dfm add` 默认写 overlay，写 base 必须 `--root base`。
 
 ## 任务 C：加一条「通用」的配置
@@ -92,6 +102,8 @@ git fetch origin && git merge --ff-only origin/main
 | `git` 拉私有仓库失败 / 弹凭据 | `git config --get credential.helper`、`ls -l ~/.local/bin/git-credential-wsl-gcm` | GCM 桥没链上 |
 | 有悬空软链 | 见下方检查脚本 | 模块被删/改名，链接没摘 |
 | `dfm` 报错 | `dfm` alias 指向的路径是否存在 | base 挪了位置 |
+| `remove` 报「是目录，不会覆盖目录」 | `$HOME` 下目标路径被真实目录占用 | 先改名/删除该目录，再 `remove` |
+| `unlink` 说「当前未链接」 | 模块本来就没链上 | 无需处理，属正常提示 |
 
 悬空链接检查：
 

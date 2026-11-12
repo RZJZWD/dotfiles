@@ -179,6 +179,7 @@ overlay 往 `~/.config/shell.d/` 放文件即可，数字前缀决定加载顺�
 | `dfm unlink [模块]` | 反向操作 |
 | `dfm list` | 按根分组列出模块 |
 | `dfm add [--root <根>] <源> [模块]` | 移入 overlay（默认）并立即链接；写 base 需 `--root base` |
+| `dfm remove [--root <根>] [--force] <模块>` | 把模块移回 `$HOME`（`add` 的逆操作） |
 | `dfm repo list` | 列出发现的根、分支、remote、能否推送 |
 | `dfm repo add <url> [名字]` | clone 到 `~/dotfiles-<名字>`，随后 link（用于在新机器上恢复自己的 overlay） |
 | `dfm repo pushurl <根> <url>` | 给根追加 push URL（fetch 与 push 分离） |
