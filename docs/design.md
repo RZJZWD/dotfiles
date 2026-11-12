@@ -295,11 +295,12 @@ dfm push          # 只推可写的根；base 报 skipped
 
 从当前单仓状态迁移到本设计：
 
-- [ ] base 去掉 `/home/djs` 硬编码（conda 块、`alias dfm`、tealdeer 路径）
-- [ ] base 的 rc 换成 `shell.d` 循环，删除 interop 的 source 行
-- [ ] interop 模块整体移入私有 overlay，重跑 `install-system.sh` 更新系统侧副本
+- [x] base 去掉 `/home/djs` 硬编码（conda 块、`alias dfm`、tealdeer 路径）
+- [x] base 的 rc 换成 `shell.d` 循环，删除 interop 的 source 行
+- [x] base 的私有内容移入 overlay 种子分支 `overlay-seed`；本机 overlay 仓库已建（`~/dotfiles-home`，暂无 remote）
+- [x] 系统侧 interop 内容未变，`/usr/local/sbin/wsl-interop-apply` 无需重跑
 - [ ] DFM 增加根发现、`repo` 子命令与 `update` / `push` / `status`
-- [ ] 每台机器建一个私有 overlay 仓库（可按需拆成多个）
+- [ ] 其它机器（如公司电脑）照 [migration.md](migration.md) 迁移，并建各自 overlay
 - [ ] 实现稳定后补写仓库 README（安装、用法、目录说明）
 
 ---
