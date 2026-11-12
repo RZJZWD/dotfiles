@@ -349,6 +349,20 @@ generate_target_rel_path() {
     echo "$converted"
 }
 
+# 逐文件链接（--no-folding）下，unlink 后清理模块留下的空目录
+prune_empty_dirs_for_module() {
+    local root_dir="$1" module="$2" rel d
+    [ -d "$root_dir/dfm-dotfiles/$module" ] || return 0
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        d="$(dirname "$(home_path_of "$rel")")"
+        while [ "$d" != "$HOME" ] && [ "${d#"$HOME"/}" != "$d" ]; do
+            rmdir "$d" 2>/dev/null || break
+            d="$(dirname "$d")"
+        done
+    done < <(cd "$root_dir/dfm-dotfiles/$module" && find . \( -type f -o -type l \) -printf '%P\n')
+}
+
 # 模块当前是否有链接（用于 unlink 的“未链接”判断）
 module_has_links() {
     local root_dir="$1" module="$2" rel target
@@ -699,7 +713,7 @@ add_dfm() {
     yellow "\n文件已移至仓库，原位置已备份为 .bak"
 
     yellow "链接模块 $module_name ..."
-    if stow -d "$root_dir" -t "$HOME" --dotfiles "$module_name"; then
+    if stow --no-folding -d "$root_dir" -t "$HOME" --dotfiles "$module_name"; then
         green "✓ 已链接（以后改动直接编辑链接即可，写入会落在 $(root_label "$root_idx")）"
     else
         red "✗ 链接失败，请手动执行: dfm link $module_name"
@@ -741,8 +755,11 @@ stow_operation() {
         fi
         yellow "\n${verb}模块: $module（$(root_label "$idx")）"
         set -x
-        stow $opts -d "${ROOT_PATHS[$idx]}/dfm-dotfiles" -t "$HOME" --dotfiles "$module"
+        stow --no-folding $opts -d "${ROOT_PATHS[$idx]}/dfm-dotfiles" -t "$HOME" --dotfiles "$module"
         set +x
+        if [ "$action" = "unlink" ]; then
+            prune_empty_dirs_for_module "${ROOT_PATHS[$idx]}" "$module"
+        fi
         green "✓ 模块 '$module' ${verb}成功"
         return 0
     fi
@@ -757,8 +774,11 @@ stow_operation() {
             fi
             yellow "\n${verb}模块: $name（$(root_label "$i")）"
             set -x
-            stow $opts -d "${ROOT_PATHS[$i]}/dfm-dotfiles" -t "$HOME" --dotfiles "$name"
+            stow --no-folding $opts -d "${ROOT_PATHS[$i]}/dfm-dotfiles" -t "$HOME" --dotfiles "$name"
             set +x
+            if [ "$action" = "unlink" ]; then
+                prune_empty_dirs_for_module "${ROOT_PATHS[$i]}" "$name"
+            fi
             green "✓ 模块 '$name' ${verb}成功"
             count=$((count + 1))
         done
@@ -1001,7 +1021,7 @@ remove_dfm() {
     fi
 
     # 先摘链接，再把文件搬回 $HOME
-    stow -D -d "$root_dir/dfm-dotfiles" -t "$HOME" --dotfiles "$module" >/dev/null 2>&1 || true
+    stow --no-folding -D -d "$root_dir/dfm-dotfiles" -t "$HOME" --dotfiles "$module" >/dev/null 2>&1 || true
 
     local count=0
     while IFS= read -r rel; do
@@ -1064,7 +1084,7 @@ repo_cmd() {
             load_roots || return 1
             for pkg in "$dest"/dfm-dotfiles/*/; do
                 [ -d "$pkg" ] || continue
-                stow -d "$dest/dfm-dotfiles" -t "$HOME" --dotfiles "$(basename "$pkg")"
+                stow --no-folding -d "$dest/dfm-dotfiles" -t "$HOME" --dotfiles "$(basename "$pkg")"
             done
             green "✓ 已链接新根的模块"
             ;;

@@ -301,6 +301,7 @@ dfm push          # 只推可写的根；base 报 skipped
 
 ## 10. 取舍
 
+- **stow `--no-folding`**：放弃目录折叠，链接拓扑固定（逐文件）；代价是模块内新增文件后要 `dfm link <模块>`
 - **多仓 vs 多分支**：每个根是独立仓库，没有 rebase，各自演进；代价是多一个 remote、多一次 push
 - **不用 submodule**：submodule 把 overlay 钉在 base 的某个 commit 上，而两者需要独立演进
 - **不自动 commit / push**：宁可多一步，也不替用户做决定

@@ -24,7 +24,8 @@
 
 ## 加载机制
 
-`dfm-dotfiles/<模块>/dot-xxx` 经 `stow -d dfm-dotfiles -t ~ --dotfiles <模块>` 映射成 `~/.xxx`。
+`dfm-dotfiles/<模块>/dot-xxx` 经 `stow --no-folding -d dfm-dotfiles -t ~ --dotfiles <模块>` 映射成 `~/.xxx`。
+逐文件链接、不做目录折叠：链接拓扑固定，但**在模块里新增/删除文件后必须 `dfm link <模块>`**。
 `dot-config/shell.d/*.sh` 由 base 的 bashrc/zshrc 按文件名顺序 source。
 
 ## 改完必须验证

@@ -51,6 +51,9 @@ dfm push
 **新增一条 shell 片段**：在 overlay 的 `<模块>/dot-config/shell.d/` 下建 `NN-<名字>.sh`，
 然后 `dfm link <模块>` 重链。
 
+> 链接是**逐文件**的（stow `--no-folding`），所以任何模块里新增/删除/改名文件，都要跑一次
+> `dfm link <模块>`；`dfm unlink` 会顺带清掉空的目录骨架。
+
 **移出模块**（`add` 的逆操作，文件搬回 `$HOME`）：
 
 ```sh
