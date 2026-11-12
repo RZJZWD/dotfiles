@@ -118,20 +118,12 @@ if ! shopt -oq posix; then
   fi
 fi
 
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/home/djs/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/home/djs/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "/home/djs/miniconda3/etc/profile.d/conda.sh"
-    else
-        export PATH="/home/djs/miniconda3/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
+# User-local binaries live in ~/.local/bin. Apps expose themselves here
+# (symlink, installer, etc.) instead of this file knowing their install dirs.
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
 
 
 
@@ -140,6 +132,13 @@ unset __conda_setup
 
 
 # ===== DFM Dotfiles Manager - Start ===== #
-alias dfm='/home/djs/dotfiles/DFM.sh'
+alias dfm="$HOME/dotfiles/DFM.sh"
 # ===== DFM Dotfiles Manager - End ===== #
+
+# Site config fragments: base 不知道里面是谁，overlay 往 ~/.config/shell.d 放文件
+for _f in "$HOME"/.config/shell.d/*.sh; do
+    [ -e "$_f" ] || continue
+    . "$_f"
+done
+unset _f
 

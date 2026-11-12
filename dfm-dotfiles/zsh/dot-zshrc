@@ -113,5 +113,11 @@ zinit light romkatv/powerlevel10k
 export PATH="$HOME/.local/bin:$PATH"
 
 # ===== DFM Dotfiles Manager - Start ===== #
-alias dfm='/home/djs/dotfiles/DFM.sh'
+alias dfm="$HOME/dotfiles/DFM.sh"
 # ===== DFM Dotfiles Manager - End ===== #
+
+# Site config fragments: base 不知道里面是谁，overlay 往 ~/.config/shell.d 放文件
+for _f in "$HOME"/.config/shell.d/*.sh(N); do
+    . "$_f"
+done
+unset _f
